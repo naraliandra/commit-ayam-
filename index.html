@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Year Tracker</title>
+<style>
+  :root{--bg:#0f1115;--card:#181b22;--border:#2a2e37;--text:#e8e9ec;--muted:#9198a3;--accent:#4f8cff;--good:#3ecf8e;--bad:#f0616d;}
+  *{box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;padding:2rem 1rem;}
+  .wrap{max-width:900px;margin:0 auto;}
+  h1{font-size:1.6rem;margin-bottom:0.25rem;}
+  p.sub{color:var(--muted);margin-top:0;margin-bottom:2rem;}
+  h2{font-size:1.1rem;margin:2rem 0 1rem;}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+  th,td{padding:0.6rem 0.8rem;text-align:left;border-bottom:1px solid var(--border);font-size:0.9rem;}
+  th{color:var(--muted);font-weight:500;}
+  tr:last-child td{border-bottom:none;}
+  input[type=number],input[type=text]{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:0.4rem 0.5rem;border-radius:6px;width:80px;}
+  input[type=text]{width:100%;}
+  .bar{background:var(--border);border-radius:4px;height:8px;width:120px;overflow:hidden;}
+  .bar>div{background:var(--accent);height:100%;}
+  .row-actions{text-align:right;}
+  button{background:var(--accent);color:#fff;border:none;padding:0.5rem 1rem;border-radius:6px;cursor:pointer;font-size:0.85rem;}
+  button.secondary{background:transparent;border:1px solid var(--border);color:var(--text);}
+  button.danger{background:var(--bad);}
+  .addRow{display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap;}
+  .addRow input[type=text]{flex:1;min-width:160px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:1rem;}
+  .log-entry{display:flex;justify-content:space-between;padding:0.5rem 0;border-bottom:1px solid var(--border);font-size:0.88rem;}
+  .log-entry:last-child{border-bottom:none;}
+  .muted{color:var(--muted);font-size:0.8rem;}
+  select{background:var(--bg);color:var(--text);border:1px solid var(--border);padding:0.4rem;border-radius:6px;}
+  .footer-note{color:var(--muted);font-size:0.8rem;margin-top:2rem;text-align:center;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Year tracker</h1>
+  <p class="sub"><span id="ageLabel">18 → 19</span>. Set targets, log progress, review monthly.</p>
+  <div class="addRow" style="margin-bottom:1.5rem;">
+    <input type="number" id="ageInput" placeholder="Current age" style="width:100px">
+    <button onclick="setAge()">Set age</button>
+  </div>
+
+  <h2>Goals</h2>
+  <table id="goalsTable">
+    <thead><tr><th>Category</th><th>Target</th><th>Current</th><th>Progress</th><th>%</th><th></th></tr></thead>
+    <tbody id="goalsBody"></tbody>
+  </table>
+  <div class="addRow">
+    <input type="text" id="newGoalName" placeholder="Category (e.g. Books read)">
+    <input type="number" id="newGoalTarget" placeholder="Target">
+    <button onclick="addGoal()">Add goal</button>
+  </div>
+
+  <h2>Log progress</h2>
+  <div class="card">
+    <div class="addRow">
+      <select id="logCategory"></select>
+      <input type="number" id="logAmount" placeholder="Amount" value="1" style="width:70px">
+      <input type="text" id="logNote" placeholder="Note (optional)">
+      <button onclick="addLog()">Log it</button>
+    </div>
+    <div id="logList" style="margin-top:1rem;"></div>
+  </div>
+
+  <h2>Monthly review — cut the bottom 20%</h2>
+  <div class="card">
+    <p class="muted">Rate each active goal's return (progress per hour spent) this month. Lowest scores get flagged.</p>
+    <table id="reviewTable">
+      <thead><tr><th>Category</th><th>Hours spent</th><th>Rating (1-5)</th><th>Ratio</th><th></th></tr></thead>
+      <tbody id="reviewBody"></tbody>
+    </table>
+  </div>
+
+  <p class="footer-note">Data saves to this browser only (localStorage). Clear browser data = clear tracker.</p>
+</div>
+
+<script>
+const KEY='year_tracker_v1';
+function load(){ return JSON.parse(localStorage.getItem(KEY) || '{"goals":[],"logs":[]}'); }
+function save(d){ localStorage.setItem(KEY, JSON.stringify(d)); }
+let data = load();
+if(!data.age) data.age = 18;
+function setAge(){
+  const a = parseInt(document.getElementById('ageInput').value);
+  if(!a) return;
+  data.age = a;
+  save(data); render();
+}
+
+function addGoal(){
+  const name = document.getElementById('newGoalName').value.trim();
+  const target = parseFloat(document.getElementById('newGoalTarget').value);
+  if(!name || !target) return;
+  data.goals.push({id: Date.now(), name, target, hours:0, rating:0});
+  save(data);
+  document.getElementById('newGoalName').value='';
+  document.getElementById('newGoalTarget').value='';
+  render();
+}
+function removeGoal(id){
+  data.goals = data.goals.filter(g=>g.id!==id);
+  data.logs = data.logs.filter(l=>l.goalId!==id);
+  save(data); render();
+}
+function addLog(){
+  const goalId = parseInt(document.getElementById('logCategory').value);
+  const amount = parseFloat(document.getElementById('logAmount').value) || 0;
+  const note = document.getElementById('logNote').value.trim();
+  if(!goalId || !amount) return;
+  data.logs.push({goalId, amount, note, date: new Date().toLocaleDateString()});
+  save(data);
+  document.getElementById('logAmount').value=1;
+  document.getElementById('logNote').value='';
+  render();
+}
+function removeLog(idx){
+  data.logs.splice(idx,1);
+  save(data); render();
+}
+function updateHours(id, val){
+  const g = data.goals.find(g=>g.id===id);
+  g.hours = parseFloat(val)||0;
+  save(data); render();
+}
+function updateRating(id, val){
+  const g = data.goals.find(g=>g.id===id);
+  g.rating = parseFloat(val)||0;
+  save(data); render();
+}
+function currentFor(id){
+  return data.logs.filter(l=>l.goalId===id).reduce((s,l)=>s+l.amount,0);
+}
+function render(){
+  document.getElementById('ageLabel').textContent = `${data.age} → ${data.age+1}`;
+  document.getElementById('ageInput').value = data.age;
+  const gBody = document.getElementById('goalsBody');
+  gBody.innerHTML = '';
+  data.goals.forEach(g=>{
+    const current = currentFor(g.id);
+    const pct = Math.min(100, Math.round((current/g.target)*100));
+    gBody.innerHTML += `<tr>
+      <td>${g.name}</td>
+      <td>${g.target}</td>
+      <td>${current}</td>
+      <td><div class="bar"><div style="width:${pct}%"></div></div> <span class="muted">${pct}%</span></td>
+      <td>${pct}%</td>
+      <td class="row-actions"><button class="secondary danger" onclick="removeGoal(${g.id})">Remove</button></td>
+    </tr>`;
+  });
+
+  const sel = document.getElementById('logCategory');
+  sel.innerHTML = data.goals.map(g=>`<option value="${g.id}">${g.name}</option>`).join('');
+
+  const logList = document.getElementById('logList');
+  const sorted = data.logs.map((l,i)=>({...l, idx:i})).slice().reverse();
+  logList.innerHTML = sorted.length ? sorted.map(l=>{
+    const g = data.goals.find(g=>g.id===l.goalId);
+    return `<div class="log-entry">
+      <span>${g ? g.name : '(deleted)'} +${l.amount} ${l.note ? '— '+l.note : ''}</span>
+      <span class="muted">${l.date} <button class="secondary danger" style="margin-left:8px;padding:2px 8px" onclick="removeLog(${l.idx})">x</button></span>
+    </div>`;
+  }).join('') : '<p class="muted">No entries yet.</p>';
+
+  const rBody = document.getElementById('reviewBody');
+  const ratios = data.goals.map(g=> g.hours>0 ? g.rating/g.hours : 0);
+  const sortedRatios = [...ratios].filter(r=>r>0).sort((a,b)=>a-b);
+  const cutThreshold = sortedRatios[1]; // bottom 2
+  rBody.innerHTML = '';
+  data.goals.forEach((g,i)=>{
+    const ratio = ratios[i];
+    const isCut = ratio>0 && cutThreshold!==undefined && ratio<=cutThreshold;
+    rBody.innerHTML += `<tr>
+      <td>${g.name}</td>
+      <td><input type="number" value="${g.hours}" onchange="updateHours(${g.id}, this.value)"></td>
+      <td><input type="number" min="1" max="5" value="${g.rating}" onchange="updateRating(${g.id}, this.value)"></td>
+      <td>${ratio ? ratio.toFixed(2) : '-'}</td>
+      <td style="color:${isCut?'var(--bad)':'var(--good)'}">${ratio>0 ? (isCut?'Cut':'Keep') : ''}</td>
+    </tr>`;
+  });
+}
+render();
+</script>
+</body>
+</html>
